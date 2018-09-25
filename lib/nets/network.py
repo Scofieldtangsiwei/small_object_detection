@@ -48,10 +48,10 @@ class Network(object):
     # use a customized visualization function to visualize the boxes
     if self._gt_image is None:
       self._add_gt_image()
-    image = tf.py_func(draw_bounding_boxes, 
+    image = tf.py_func(draw_bounding_boxes,
                       [self._gt_image, self._gt_boxes, self._im_info],
                       tf.float32, name="gt_boxes")
-    
+
     return tf.summary.image('GROUND_TRUTH', image)
 
   def _add_act_summary(self, tensor):
@@ -189,7 +189,7 @@ class Network(object):
       # just to get the shape right
       height = tf.to_int32(tf.ceil(self._im_info[0] / np.float32(self._feat_stride[0])))
       width = tf.to_int32(tf.ceil(self._im_info[1] / np.float32(self._feat_stride[0])))
-  
+
       anchors, anchor_length = tf.py_func(generate_anchors_pre,
                                           [height, width,
                                            self._feat_stride, self._anchor_scales, self._anchor_ratios],
@@ -207,19 +207,21 @@ class Network(object):
     else:
       initializer = tf.random_normal_initializer(mean=0.0, stddev=0.01)
       initializer_bbox = tf.random_normal_initializer(mean=0.0, stddev=0.001)
-    
-    block_2_conv = self._get_block_2_conv(is_training)
+
     block_4_conv = self._image_to_head(is_training)
+    block_2_conv = self._get_block_2_conv(is_training)
     with tf.variable_scope(self._scope, self._scope):
       # build the anchors for the image
       self._anchor_component()
       # region proposal network
+
       rois_2_block = self._region_proposal(block_2_conv, is_training, initializer)
       rois_4_block = self._find_4_block_rois(rois_2_block)
+
       # region of interest pooling
       if cfg.POOLING_MODE == 'crop':
+        pool5_2 = self._crop_pool_layer(block_4_conv, rois_4_block, "pool5_2")
         pool5_1 = self._crop_pool_layer(block_2_conv, rois_2_block, "pool5_1")
-        pool5_2 = self.crop_pool_layer(block_4_conv, rois_4_block, "pool5_2")
       else:
         raise NotImplementedError
 
@@ -228,7 +230,7 @@ class Network(object):
     fc7 = self._head_to_tail(pool5, is_training)
     with tf.variable_scope(self._scope, self._scope):
       # region classification
-      cls_prob, bbox_pred = self._region_classification(fc7, is_training, 
+      cls_prob, bbox_pred = self._region_classification(fc7, is_training,
                                                         initializer, initializer_bbox)
 
     self._score_summaries.update(self._predictions)
@@ -311,7 +313,7 @@ class Network(object):
                                 padding='VALID', activation_fn=None, scope='rpn_bbox_pred')
 
 
- 
+
     if is_training:
       rois, roi_scores = self._proposal_layer(rpn_cls_prob, rpn_bbox_pred, "rois")
       rpn_labels = self._anchor_target_layer(rpn_cls_score, "anchor")
@@ -336,13 +338,13 @@ class Network(object):
     return rois
 
   def _region_classification(self, fc7, is_training, initializer, initializer_bbox):
-    cls_score = slim.fully_connected(fc7, self._num_classes, 
+    cls_score = slim.fully_connected(fc7, self._num_classes,
                                        weights_initializer=initializer,
                                        trainable=is_training,
                                        activation_fn=None, scope='cls_score')
     cls_prob = self._softmax_layer(cls_score, "cls_prob")
     cls_pred = tf.argmax(cls_score, axis=1, name="cls_pred")
-    bbox_pred = slim.fully_connected(fc7, self._num_classes * 4, 
+    bbox_pred = slim.fully_connected(fc7, self._num_classes * 4,
                                      weights_initializer=initializer_bbox,
                                      trainable=is_training,
                                      activation_fn=None, scope='bbox_pred')
@@ -392,10 +394,10 @@ class Network(object):
 
     # list as many types of layers as possible, even if they are not used now
     with arg_scope([slim.conv2d, slim.conv2d_in_plane, \
-                    slim.conv2d_transpose, slim.separable_conv2d, slim.fully_connected], 
+                    slim.conv2d_transpose, slim.separable_conv2d, slim.fully_connected],
                     weights_regularizer=weights_regularizer,
-                    biases_regularizer=biases_regularizer, 
-                    biases_initializer=tf.constant_initializer(0.0)): 
+                    biases_regularizer=biases_regularizer,
+                    biases_initializer=tf.constant_initializer(0.0)):
       rois, cls_prob, bbox_pred = self._build_network(training)
 
     layers_to_output = {'rois': rois}
@@ -492,4 +494,3 @@ class Network(object):
     feed_dict = {self._image_large: blob_large['data'],self._image_small:blob_small['data'], self._im_info: blobs['im_info'],
                  self._gt_boxes: blobs['gt_boxes']}
     sess.run([train_op], feed_dict=feed_dict)
-
