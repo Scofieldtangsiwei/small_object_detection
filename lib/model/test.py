@@ -42,7 +42,17 @@ def _get_image_blob(im):
   processed_ims = []
   im_scale_factors = []
 
-  for target_size in cfg.TEST.SCALES:
+  for target_size in cfg.TEST.SCALES_1:
+    im_scale = float(target_size) / float(im_size_min)
+    # Prevent the biggest axis from being more than MAX_SIZE
+    if np.round(im_scale * im_size_max) > cfg.TEST.MAX_SIZE:
+      im_scale = float(cfg.TEST.MAX_SIZE) / float(im_size_max)
+    im = cv2.resize(im_orig, None, None, fx=im_scale, fy=im_scale,
+            interpolation=cv2.INTER_LINEAR)
+    im_scale_factors.append(im_scale)
+    processed_ims.append(im)
+
+  for target_size in cfg.TEST.SCALES_2:
     im_scale = float(target_size) / float(im_size_min)
     # Prevent the biggest axis from being more than MAX_SIZE
     if np.round(im_scale * im_size_max) > cfg.TEST.MAX_SIZE:
@@ -53,16 +63,17 @@ def _get_image_blob(im):
     processed_ims.append(im)
 
   # Create a blob to hold the input images
-  blob = im_list_to_blob(processed_ims)
+  blob_large, blob_small = im_list_to_blob(processed_ims)
 
-  return blob, np.array(im_scale_factors)
+  return blob_large, blob_small, np.array(im_scale_factors)
 
 def _get_blobs(im):
   """Convert an image and RoIs within that image into network inputs."""
-  blobs = {}
-  blobs['data'], im_scale_factors = _get_image_blob(im)
+  blob_large = {}
+  blob_small = {}
+  blob_large['data'], blob_small['data'], im_scale_factors = _get_image_blob(im)
 
-  return blobs, im_scale_factors
+  return blob_large, blob_small, im_scale_factors
 
 def _clip_boxes(boxes, im_shape):
   """Clip boxes to image boundaries."""
@@ -84,13 +95,15 @@ def _rescale_boxes(boxes, inds, scales):
   return boxes
 
 def im_detect(sess, net, im):
-  blobs, im_scales = _get_blobs(im)
-  assert len(im_scales) == 1, "Only single-image batch implemented"
+  blob_large, blob_small, im_scales = _get_blobs(im)
+  assert len(im_scales) == 2, "Only single-image batch implemented"
 
-  im_blob = blobs['data']
-  blobs['im_info'] = np.array([im_blob.shape[1], im_blob.shape[2], im_scales[0]], dtype=np.float32)
+  im_blob_large = blob_large['data']
+  im_blob_small = blob_small['data']
+  blob_large['im_info'] = np.array([im_blob_large.shape[1], im_blob_large.shape[2], im_scales[0]], dtype=np.float32)
+  blob_small['im_info'] = np.array([im_blob_small.shape[1], im_blob_small.shape[2], im_scales[1]], dtype=np.float32)
 
-  _, scores, bbox_pred, rois = net.test_image(sess, blobs['data'], blobs['im_info'])
+  _, scores, bbox_pred, rois = net.test_image(sess, blob_large['data'], blob_small['data'], blob_large['im_info'], blob_small['im_info'])
   
   boxes = rois[:, 1:5] / im_scales[0]
   scores = np.reshape(scores, [scores.shape[0], -1])
