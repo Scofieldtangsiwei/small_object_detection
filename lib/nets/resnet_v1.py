@@ -46,7 +46,7 @@ def resnet_arg_scope(is_training=True,
 class resnetv1(Network):
   def __init__(self, num_layers=50):
     Network.__init__(self)
-    self._feat_stride = [8, ]
+    self._feat_stride = [16, ]
     self._feat_compress = [1. / float(self._feat_stride[0]), ]
     self._num_layers = num_layers
     self._scope = 'resnet_v1_%d' % num_layers
@@ -77,18 +77,22 @@ class resnetv1(Network):
 
   # Do the first few layers manually, because 'SAME' padding can behave inconsistently
   # for images of different sizes: sometimes 0, sometimes 1
-  def _build_base(self):
-    with tf.variable_scope(self._scope, self._scope):
-      net = resnet_utils.conv2d_same(self._image, 64, 7, stride=2, scope='conv1')
+  def _build_base(self, reuse = None):
+    with tf.variable_scope(self._scope, self._scope) as scope:
+      if(reuse == True):
+          scope.reuse_variables();
+          net = resnet_utils.conv2d_same(self._image_large, 64, 7, stride=2, scope='conv1')
+      else:
+          net = resnet_utils.conv2d_same(self._image_small, 64, 7, stride=2, scope='conv1')
       net = tf.pad(net, [[0, 0], [1, 1], [1, 1], [0, 0]])
       net = slim.max_pool2d(net, [3, 3], stride=2, padding='VALID', scope='pool1')
 
     return net
 
-  def _get_block_2_conv_net(self. is_training, reuse=True):
-      
+  def _get_block_2_conv_net(self, is_training, reuse=True):
+
     with slim.arg_scope(resnet_arg_scope(is_training=False)):
-      net_conv = self._build_base()
+      net_conv = self._build_base(reuse = True)
     if cfg.RESNET.FIXED_BLOCKS > 0:
       with slim.arg_scope(resnet_arg_scope(is_training=False)):
         net_conv, _ = resnet_v1.resnet_v1(net_conv,
@@ -111,18 +115,12 @@ class resnetv1(Network):
 
 
   def _concatenate_2_blocks(pool5_1, pool5_2):
-     
-    raise NotImplementedError
 
-
-  def _find_4_block_rois(rois_2_block):
-    
     raise NotImplementedError
 
 
 
-
-  def _image_to_head(self, is_training, reuse=True):
+  def _image_to_head(self, is_training, reuse=None):
     assert (0 <= cfg.RESNET.FIXED_BLOCKS <= 3)
     # Now the base is always fixed during training
     with slim.arg_scope(resnet_arg_scope(is_training=False)):
@@ -158,7 +156,7 @@ class resnetv1(Network):
                                    reuse=reuse,
                                    scope=self._scope)
       # average pooling done by reduce_mean
-      fc7 = tf.reduce_mean(fc7, axis=[1, 2])
+     #fc7 = tf.reduce_mean(fc7, axis=[1, 2])
     return fc7
 
   def _decide_blocks(self):
@@ -172,7 +170,7 @@ class resnetv1(Network):
 
     elif self._num_layers == 101:
       self._blocks = [resnet_v1_block('block1', base_depth=64, num_units=3, stride=2),
-                      resnet_v1_block('block2', base_depth=128, num_units=4, stride=2)]
+                      resnet_v1_block('block2', base_depth=128, num_units=4, stride=2),
                       # use stride 1 for the last conv4 layer
                       resnet_v1_block('block3', base_depth=256, num_units=23, stride=1),
                       resnet_v1_block('block4', base_depth=512, num_units=3, stride=1)]
@@ -211,5 +209,5 @@ class resnetv1(Network):
         restorer_fc = tf.train.Saver({self._scope + "/conv1/weights": conv1_rgb})
         restorer_fc.restore(sess, pretrained_model)
 
-        sess.run(tf.assign(self._variables_to_fix[self._scope + '/conv1/weights:0'], 
+        sess.run(tf.assign(self._variables_to_fix[self._scope + '/conv1/weights:0'],
                            tf.reverse(conv1_rgb, [2])))

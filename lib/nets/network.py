@@ -39,9 +39,9 @@ class Network(object):
 
   def _add_gt_image(self):
     # add back mean
-    image = self._image + cfg.PIXEL_MEANS
+    image = self._image_small + cfg.PIXEL_MEANS
     # BGR to RGB (opencv uses BGR)
-    resized = tf.image.resize_bilinear(image, tf.to_int32(self._im_info[:2] / self._im_info[2]))
+    resized = tf.image.resize_bilinear(image, tf.to_int32(self._im_info_small[:2] / self._im_info_small[2]))
     self._gt_image = tf.reverse(resized, axis=[-1])
 
   def _add_gt_image_summary(self):
@@ -49,7 +49,7 @@ class Network(object):
     if self._gt_image is None:
       self._add_gt_image()
     image = tf.py_func(draw_bounding_boxes,
-                      [self._gt_image, self._gt_boxes, self._im_info],
+                      [self._gt_image, self._gt_boxes_small, self._im_info_small],
                       tf.float32, name="gt_boxes")
 
     return tf.summary.image('GROUND_TRUTH', image)
@@ -88,7 +88,7 @@ class Network(object):
   def _proposal_top_layer(self, rpn_cls_prob, rpn_bbox_pred, name):
     with tf.variable_scope(name) as scope:
       rois, rpn_scores = tf.py_func(proposal_top_layer,
-                                    [rpn_cls_prob, rpn_bbox_pred, self._im_info,
+                                    [rpn_cls_prob, rpn_bbox_pred, self._im_info_large,
                                      self._feat_stride, self._anchors, self._num_anchors],
                                     [tf.float32, tf.float32], name="proposal_top")
       rois.set_shape([cfg.TEST.RPN_TOP_N, 5])
@@ -99,7 +99,7 @@ class Network(object):
   def _proposal_layer(self, rpn_cls_prob, rpn_bbox_pred, name):
     with tf.variable_scope(name) as scope:
       rois, rpn_scores = tf.py_func(proposal_layer,
-                                    [rpn_cls_prob, rpn_bbox_pred, self._im_info, self._mode,
+                                    [rpn_cls_prob, rpn_bbox_pred, self._im_info_large, self._mode,
                                      self._feat_stride, self._anchors, self._num_anchors],
                                     [tf.float32, tf.float32], name="proposal")
       rois.set_shape([None, 5])
@@ -131,6 +131,7 @@ class Network(object):
       pre_pool_size = cfg.POOLING_SIZE * 2
       crops = tf.image.crop_and_resize(bottom, bboxes, tf.to_int32(batch_ids), [pre_pool_size, pre_pool_size], name="crops")
 
+
     return slim.max_pool2d(crops, [2, 2], padding='SAME')
 
   def _dropout_layer(self, bottom, name, ratio=0.5):
@@ -140,7 +141,7 @@ class Network(object):
     with tf.variable_scope(name) as scope:
       rpn_labels, rpn_bbox_targets, rpn_bbox_inside_weights, rpn_bbox_outside_weights = tf.py_func(
         anchor_target_layer,
-        [rpn_cls_score, self._gt_boxes, self._im_info, self._feat_stride, self._anchors, self._num_anchors],
+        [rpn_cls_score, self._gt_boxes_large, self._im_info_large, self._feat_stride, self._anchors, self._num_anchors],
         [tf.float32, tf.float32, tf.float32, tf.float32],
         name="anchor_target")
 
@@ -163,7 +164,7 @@ class Network(object):
     with tf.variable_scope(name) as scope:
       rois, roi_scores, labels, bbox_targets, bbox_inside_weights, bbox_outside_weights = tf.py_func(
         proposal_target_layer,
-        [rois, roi_scores, self._gt_boxes, self._num_classes],
+        [rois, roi_scores, self._gt_boxes_large, self._num_classes],
         [tf.float32, tf.float32, tf.float32, tf.float32, tf.float32, tf.float32],
         name="proposal_target")
 
@@ -187,8 +188,8 @@ class Network(object):
   def _anchor_component(self):
     with tf.variable_scope('ANCHOR_' + self._tag) as scope:
       # just to get the shape right
-      height = tf.to_int32(tf.ceil(self._im_info[0] / np.float32(self._feat_stride[0])))
-      width = tf.to_int32(tf.ceil(self._im_info[1] / np.float32(self._feat_stride[0])))
+      height = tf.to_int32(tf.ceil(self._im_info_large[0] / np.float32(self._feat_stride[0])))
+      width = tf.to_int32(tf.ceil(self._im_info_large[1] / np.float32(self._feat_stride[0])))
 
       anchors, anchor_length = tf.py_func(generate_anchors_pre,
                                           [height, width,
@@ -209,25 +210,27 @@ class Network(object):
       initializer_bbox = tf.random_normal_initializer(mean=0.0, stddev=0.001)
 
     block_4_conv = self._image_to_head(is_training)
-    block_2_conv = self._get_block_2_conv(is_training)
+    block_2_conv = self._get_block_2_conv_net(is_training)
+    block_4_conv = self._head_to_tail(block_4_conv, is_training)
     with tf.variable_scope(self._scope, self._scope):
       # build the anchors for the image
       self._anchor_component()
       # region proposal network
 
-      rois_2_block = self._region_proposal(block_2_conv, is_training, initializer)
-      rois_4_block = self._find_4_block_rois(rois_2_block)
+      rois = self._region_proposal(block_2_conv, is_training, initializer)
+
 
       # region of interest pooling
       if cfg.POOLING_MODE == 'crop':
-        pool5_2 = self._crop_pool_layer(block_4_conv, rois_4_block, "pool5_2")
-        pool5_1 = self._crop_pool_layer(block_2_conv, rois_2_block, "pool5_1")
+        pool5_2 = self._crop_pool_layer(block_4_conv, rois, "pool5_2")
+        pool5_1 = self._crop_pool_layer(block_2_conv, rois, "pool5_1")
       else:
         raise NotImplementedError
 
-    pool5 = self._concatetate_blocks(pool5_1, pool5_2)
+    fc7 = tf.concat([pool5_1, pool5_2], axis = 3)
+    fc7 = tf.reduce_mean(fc7, axis=[1, 2])
 
-    fc7 = self._head_to_tail(pool5, is_training)
+#    fc7 = self._head_to_tail(pool5, is_training)
     with tf.variable_scope(self._scope, self._scope):
       # region classification
       cls_prob, bbox_pred = self._region_classification(fc7, is_training,
@@ -313,7 +316,6 @@ class Network(object):
                                 padding='VALID', activation_fn=None, scope='rpn_bbox_pred')
 
 
-
     if is_training:
       rois, roi_scores = self._proposal_layer(rpn_cls_prob, rpn_bbox_pred, "rois")
       rpn_labels = self._anchor_target_layer(rpn_cls_score, "anchor")
@@ -366,8 +368,10 @@ class Network(object):
                           anchor_scales=(8, 16, 32), anchor_ratios=(0.5, 1, 2)):
     self._image_large = tf.placeholder(tf.float32, shape=[1, None, None, 3])
     self._image_small = tf.placeholder(tf.float32, shape=[1, None, None, 3])
-    self._im_info = tf.placeholder(tf.float32, shape=[3])
-    self._gt_boxes = tf.placeholder(tf.float32, shape=[None, 5])
+    self._im_info_large = tf.placeholder(tf.float32, shape=[3])
+    self._im_info_small = tf.placeholder(tf.float32, shape=[3])
+    self._gt_boxes_large = tf.placeholder(tf.float32, shape=[None, 5])
+    self._gt_boxes_small = tf.placeholder(tf.float32, shape=[None, 5])
     self._tag = tag
 
     self._num_classes = num_classes
@@ -459,15 +463,15 @@ class Network(object):
     return cls_score, cls_prob, bbox_pred, rois
 
   def get_summary(self, sess, blob_large, blob_small):
-    feed_dict = {self._image_large: blob_large['data'],self._image_small:blob_small['data'], self._im_info: blobs['im_info'],
-                 self._gt_boxes: blobs['gt_boxes']}
+    feed_dict = {self._image_large: blob_large['data'],self._image_small:blob_small['data'], self._im_info_large: blob_large['im_info'],
+                 self._im_info_small: blob_small['im_info'], self._gt_boxes_large: blob_large['gt_boxes'], self._gt_boxes_small: blob_small['gt_boxes']}
     summary = sess.run(self._summary_op_val, feed_dict=feed_dict)
 
     return summary
 
   def train_step(self, sess, blob_large, blob_small, train_op):
-    feed_dict = {self._image_small: blob_small['data'],self._image_large: blob_large['data'] self._im_info: blobs['im_info'],
-                 self._gt_boxes: blobs['gt_boxes']}
+    feed_dict = {self._image_large: blob_large['data'],self._image_small:blob_small['data'], self._im_info_large: blob_large['im_info'],
+                 self._im_info_small: blob_small['im_info'], self._gt_boxes_large: blob_large['gt_boxes'], self._gt_boxes_small: blob_small['gt_boxes']}
     rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, loss, _ = sess.run([self._losses["rpn_cross_entropy"],
                                                                         self._losses['rpn_loss_box'],
                                                                         self._losses['cross_entropy'],
@@ -478,8 +482,8 @@ class Network(object):
     return rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, loss
 
   def train_step_with_summary(self, sess, blob_large, blob_small, train_op):
-    feed_dict = {self._image_large: blob_large['data'], self._image_small:blob_small['data'], self._im_info: blobs['im_info'],
-                 self._gt_boxes: blobs['gt_boxes']}
+    feed_dict = {self._image_large: blob_large['data'],self._image_small:blob_small['data'], self._im_info_large: blob_large['im_info'],
+                 self._im_info_small: blob_small['im_info'], self._gt_boxes_large: blob_large['gt_boxes'], self._gt_boxes_small: blob_small['gt_boxes']}
     rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, loss, summary, _ = sess.run([self._losses["rpn_cross_entropy"],
                                                                                  self._losses['rpn_loss_box'],
                                                                                  self._losses['cross_entropy'],
@@ -491,6 +495,6 @@ class Network(object):
     return rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, loss, summary
 
   def train_step_no_return(self, sess, blob_large, blob_small, train_op):
-    feed_dict = {self._image_large: blob_large['data'],self._image_small:blob_small['data'], self._im_info: blobs['im_info'],
-                 self._gt_boxes: blobs['gt_boxes']}
+    feed_dict = {self._image_large: blob_large['data'],self._image_small:blob_small['data'], self._im_info_large: blob_large['im_info'],
+                 self._im_info_small: blob_small['im_info'], self._gt_boxes_large: blob_large['gt_boxes'], self._gt_boxes_small: blob_small['gt_boxes']}
     sess.run([train_op], feed_dict=feed_dict)

@@ -62,12 +62,12 @@ __C.TRAIN.SUMMARY_INTERVAL = 180
 # The scale is the pixel size of an image's shortest side
 __C.TRAIN.SCALES_1 = (1600,)
 
-__C.TRAIN.SCALES_2 = (800.)
+__C.TRAIN.SCALES_2 = (800,)
 
 # Max pixel size of the longest side of a scaled input image
 __C.TRAIN.MAX_SIZE_1 = 2000
 
-__c.TRAIN.MAX_SIZE_2 = 1000
+__C.TRAIN.MAX_SIZE_2 = 1000
 
 # Images to use per minibatch
 __C.TRAIN.IMS_PER_BATCH = 1

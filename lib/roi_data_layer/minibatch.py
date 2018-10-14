@@ -21,7 +21,7 @@ def get_minibatch(roidb, num_classes):
   num_images = len(roidb)
 
   # Sample random scales to use for each image in this batch
-  random_scale_inds = npr.randint(0, high=len(cfg.TRAIN.SCALES),
+  random_scale_inds = npr.randint(0, high=len(cfg.TRAIN.SCALES_1),
                   size=num_images)
   assert(cfg.TRAIN.BATCH_SIZE % num_images == 0), \
     'num_images ({}) must divide BATCH_SIZE ({})'. \
@@ -35,19 +35,22 @@ def get_minibatch(roidb, num_classes):
 
 #  assert len(im_scales) == 1, "Single batch only"
 #  assert len(roidb) == 1, "Single batch only"
-  
+
   # gt boxes: (x1, y1, x2, y2, cls)
   if cfg.TRAIN.USE_ALL_GT:
     # Include all ground truth boxes
     gt_inds = np.where(roidb[0]['gt_classes'] != 0)[0]
   else:
-    # For the COCO ground truth boxes, exclude the ones that are ''iscrowd'' 
+    # For the COCO ground truth boxes, exclude the ones that are ''iscrowd''
     gt_inds = np.where(roidb[0]['gt_classes'] != 0 & np.all(roidb[0]['gt_overlaps'].toarray() > -1.0, axis=1))[0]
-  gt_boxes = np.empty((len(gt_inds), 5), dtype=np.float32)
-  gt_boxes[:, 0:4] = roidb[0]['boxes'][gt_inds, :] * im_scales[0]
-  gt_boxes[:, 4] = roidb[0]['gt_classes'][gt_inds]
-  blob_large['gt_boxes'] = gt_boxes
-  blob_small['gt_boxes'] = gt_boxes
+  gt_boxes_large = np.empty((len(gt_inds), 5), dtype=np.float32)
+  gt_boxes_small = np.empty((len(gt_inds), 5), dtype=np.float32)
+  gt_boxes_large[:, 0:4] = roidb[0]['boxes'][gt_inds, :] * im_scales[0]
+  gt_boxes_large[:, 4] = roidb[0]['gt_classes'][gt_inds]
+  gt_boxes_small[:, 0:4] = roidb[0]['boxes'][gt_inds, :] * im_scales[1]
+  gt_boxes_small[:, 4] = roidb[0]['gt_classes'][gt_inds]
+  blob_large['gt_boxes'] = gt_boxes_large
+  blob_small['gt_boxes'] = gt_boxes_small
   blob_large['im_info'] = np.array(
     [im_blob_large.shape[1], im_blob_large.shape[2], im_scales[0]],
     dtype=np.float32)
@@ -72,7 +75,7 @@ def _get_image_blob(roidb, scale_inds):
     target_size_1 = cfg.TRAIN.SCALES_1[scale_inds[i]]
     target_size_2 = cfg.TRAIN.SCALES_2[scale_inds[i]]
     im_1, im_2, im_scale_1, im_scale_2 = prep_im_for_blob(im, cfg.PIXEL_MEANS, target_size_1, target_size_2
-                    cfg.TRAIN.MAX_SIZE_1, cfg.TRAIN.MAX_SIZE_2)
+                    ,cfg.TRAIN.MAX_SIZE_1, cfg.TRAIN.MAX_SIZE_2)
     im_scales.append(im_scale_1)
     im_scales.append(im_scale_2)
     processed_ims.append(im_1)

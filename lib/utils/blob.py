@@ -29,8 +29,8 @@ def im_list_to_blob(ims):
 #  for i in range(num_images):
 #    im = ims[i]
 #    blob[i, 0:im.shape[0], 0:im.shape[1], :] = im
-  
-  return blob_large blob_small
+
+  return blob_large, blob_small
 
 
 def prep_im_for_blob(im, pixel_means, target_size_1, target_size_2, max_size_1, max_size_2):
@@ -41,7 +41,7 @@ def prep_im_for_blob(im, pixel_means, target_size_1, target_size_2, max_size_1, 
   im_size_min = np.min(im_shape[0:2])
   im_size_max = np.max(im_shape[0:2])
   im_scale_1 = float(target_size_1) / float(im_size_min)
-  im_scale_2 = float(target_sieze_2) / float(im_size_min)
+  im_scale_2 = float(target_size_2) / float(im_size_min)
   # Prevent the biggest axis from being more than MAX_SIZE
   if np.round(im_scale_1 * im_size_max) > max_size_1:
     im_scale_1 = float(max_size_1) / float(im_size_max)

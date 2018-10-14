@@ -244,7 +244,7 @@ def voc_eval(detpath,
       if ovmax > ovthresh:
         if not R['difficult'][jmax]:
           if not R['det'][jmax]:
-		tp[d] = 1
+            tp[d] = 1
 #                if (flag==0):
 #                  tp[d] = 1
 #                else:
@@ -254,35 +254,35 @@ def voc_eval(detpath,
 
 
 
-                R['det'][jmax] = 1
-                if(R['size'][jmax] == 'small'):
-                	small_nd += 1
-                	small_bin[int(-sorted_scores[d]*10)] += 1
-                        for index in np.arange(0,max(-sorted_scores[d],0.0001)*20,1):
-                    		small_tp[int(index)] += 1
-            	elif(R['size'][jmax] == 'medium'):
-			medium_bin[int(-sorted_scores[d]*10)] += 1
-                	for index in np.arange(0,max(-sorted_scores[d],0.0001)*20,1):
-                		medium_tp[int(index)] += 1
+            R['det'][jmax] = 1
+            if(R['size'][jmax] == 'small'):
+                small_nd += 1
+                small_bin[int(-sorted_scores[d]*10)] += 1
+                for index in np.arange(0,max(-sorted_scores[d],0.0001)*20,1):
+                    small_tp[int(index)] += 1
+            elif(R['size'][jmax] == 'medium'):
+                medium_bin[int(-sorted_scores[d]*10)] += 1
+                for index in np.arange(0,max(-sorted_scores[d],0.0001)*20,1):
+                	medium_tp[int(index)] += 1
                 	medium_nd += 1
-            	else:
-			large_bin[int(-sorted_scores[d]*10)] += 1
-            		for index in np.arange(0,max(-sorted_scores[d]*20,0.0001),1):
-                		large_tp[int(index)] += 1
+            else:
+                large_bin[int(-sorted_scores[d]*10)] += 1
+                for index in np.arange(0,max(-sorted_scores[d]*20,0.0001),1):
+                	large_tp[int(index)] += 1
                 	large_nd += 1
           else:
-            	fp[d] = 1.
-            	if(R['size'][jmax] == 'small'):
-                	for index in np.arange(0,max(0.0001,-sorted_scores[d])*20,1):
-                		small_fp[int(index)] += 1
+            fp[d] = 1.
+            if(R['size'][jmax] == 'small'):
+                for index in np.arange(0,max(0.0001,-sorted_scores[d])*20,1):
+                	small_fp[int(index)] += 1
                 	small_nd += 1
-            	elif(R['size'][jmax] == 'medium'):
-                	for index in np.arange(0,max(0.0001,-sorted_scores[d])*20,1):
-                		medium_fp[int(index)] += 1
+            elif(R['size'][jmax] == 'medium'):
+                for index in np.arange(0,max(0.0001,-sorted_scores[d])*20,1):
+                	medium_fp[int(index)] += 1
                 	medium_nd += 1
-            	elif(R['size'][jmax] == 'large'):
-                	for index in np.arange(0,max(0.0001,-sorted_scores[d])*20,1):
-                		large_fp[int(index)] += 1
+            elif(R['size'][jmax] == 'large'):
+                for index in np.arange(0,max(0.0001,-sorted_scores[d])*20,1):
+                	large_fp[int(index)] += 1
                		large_nd += 1
         else:
             fp[d] = 1.
