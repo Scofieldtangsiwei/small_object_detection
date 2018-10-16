@@ -164,6 +164,7 @@ def voc_eval(detpath,
     small_npos += sizes.count('small')
     medium_npos += sizes.count('medium')
     large_npos += sizes.count('large')
+    assert (npos == small_npos + medium_npos + large_npos)
 
     class_recs[imagename] = {'bbox': bbox,
                              'difficult': difficult,
@@ -262,42 +263,52 @@ def voc_eval(detpath,
                     small_tp[int(index)] += 1
             elif(R['size'][jmax] == 'medium'):
                 medium_bin[int(-sorted_scores[d]*10)] += 1
+               	medium_nd += 1
                 for index in np.arange(0,max(-sorted_scores[d],0.0001)*20,1):
                 	medium_tp[int(index)] += 1
-                	medium_nd += 1
+ 
             else:
                 large_bin[int(-sorted_scores[d]*10)] += 1
+                large_nd += 1
                 for index in np.arange(0,max(-sorted_scores[d]*20,0.0001),1):
                 	large_tp[int(index)] += 1
-                	large_nd += 1
+
           else:
             fp[d] = 1.
             if(R['size'][jmax] == 'small'):
+                small_nd += 1
                 for index in np.arange(0,max(0.0001,-sorted_scores[d])*20,1):
                 	small_fp[int(index)] += 1
-                	small_nd += 1
+
             elif(R['size'][jmax] == 'medium'):
+                medium_nd += 1
                 for index in np.arange(0,max(0.0001,-sorted_scores[d])*20,1):
                 	medium_fp[int(index)] += 1
-                	medium_nd += 1
+
             elif(R['size'][jmax] == 'large'):
+               	large_nd += 1
                 for index in np.arange(0,max(0.0001,-sorted_scores[d])*20,1):
                 	large_fp[int(index)] += 1
-               		large_nd += 1
-        else:
-            fp[d] = 1.
-            if((bb[2] - bb[0] + 1.) * (bb[3] - bb[1] + 1.)<32.0*32.0):
-                small_nd += 1
-            elif((bb[2] - bb[0] + 1.) * (bb[3] - bb[1] + 1.) > 96.0*96.0 ):
-                large_nd += 1
-            else:
-                medium_nd += 1
-                
+
+      else:
+          fp[d] = 1.
+          if((bb[2] - bb[0] + 1.) * (bb[3] - bb[1] + 1.)<32.0*32.0):
+              small_nd += 1
+          elif((bb[2] - bb[0] + 1.) * (bb[3] - bb[1] + 1.) > 96.0*96.0 ):
+              large_nd += 1
+          else:
+              medium_nd += 1
+
+  #assert nd == small_nd + medium_nd + large_nd
+  #assert nd == np.sum(tp+fp)
+            
   # compute precision recall
   total_fp = np.sum(fp)
   total_tp = np.sum(tp)
+  print("tp is {}, nd is {}".format(total_tp, nd))
   real_rec = total_tp/float(npos)
   real_prec = total_tp / np.maximum(total_tp+total_fp, np.finfo(np.float64).eps)
+  print("recall is {}, prec is {}".format(real_rec, real_prec))
 
   fp = 1 - tp
   fp = np.cumsum(fp)
